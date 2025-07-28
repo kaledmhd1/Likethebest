@@ -13,7 +13,7 @@ app = Flask(__name__)
 MAX_CONCURRENCY = 150   # أقصى عدد مهام تعمل بالتوازي
 JWT_TIMEOUT = 10        # timeout لطلب JWT
 LIKE_TIMEOUT = 10       # timeout لطلب اللايك
-TOKEN_TTL = 600        # 20 دقيقة (بالثواني)
+TOKEN_TTL = 300        # 20 دقيقة (بالثواني)
 # ------------------------------------------------------
 
 tokens1 = tokens1 = {
