@@ -10,10 +10,10 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 app = Flask(__name__)
 
 # ---------------------- الإعدادات ----------------------
-MAX_CONCURRENCY = 100   # أقصى عدد مهام تعمل بالتوازي
+MAX_CONCURRENCY = 150   # أقصى عدد مهام تعمل بالتوازي
 JWT_TIMEOUT = 10        # timeout لطلب JWT
 LIKE_TIMEOUT = 10       # timeout لطلب اللايك
-TOKEN_TTL = 1200        # 20 دقيقة (بالثواني)
+TOKEN_TTL = 600        # 20 دقيقة (بالثواني)
 # ------------------------------------------------------
 
 tokens1 = tokens1 = {
