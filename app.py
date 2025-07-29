@@ -14,7 +14,7 @@ app = Flask(__name__)
 JWT_API_URL = "https://jwt-gen-api-v2.onrender.com/token"
 LIKE_API_URL = "https://arifi-like-token.vercel.app/like"
 PLAYER_INFO_URL = "https://razor-info.vercel.app/player-info"
-MAX_PARALLEL_REQUESTS = 50
+MAX_PARALLEL_REQUESTS = 100
 LIKE_TARGET_EXPIRY = 86400          # 24 ساعة
 
 accounts_passwords = {
@@ -106,7 +106,7 @@ def FOX_RequestAddingFriend(token, target_id):
 def get_player_info(uid):
     try:
         url = f"{PLAYER_INFO_URL}?uid={uid}&region=me"
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=5)
         if response.status_code == 200:
             data = response.json()
             basic = data.get('basicInfo', {})
