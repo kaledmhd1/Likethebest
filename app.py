@@ -241,5 +241,5 @@ if __name__ == '__main__':
     refresh_all_tokens()
     threading.Thread(target=token_refresh_worker, daemon=True).start()
     threading.Thread(target=skipped_refresh_worker, daemon=True).start()
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
