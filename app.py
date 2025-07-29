@@ -16,7 +16,7 @@ ACC_FILE = 'accs.txt'
 JWT_API_URL = "https://jwt-gen-api-v2.onrender.com/token"
 LIKE_API_URL = "https://arifi-like-token.vercel.app/like"
 PLAYER_INFO_URL = "https://razor-info.vercel.app/player-info"
-MAX_PARALLEL_REQUESTS = 50
+MAX_PARALLEL_REQUESTS = 150
 TOKEN_REFRESH_INTERVAL = 300        # 5 دقائق لتحديث التوكنات العادية
 SKIPPED_REFRESH_INTERVAL = 3600     # ساعة لتحديث التوكنات المتخطاة
 LIKE_TARGET_EXPIRY = 86400          # 24 ساعة
@@ -158,7 +158,7 @@ def FOX_RequestAddingFriend(token, target_id):
             "X-GA": "v1 1",
             "ReleaseVersion": "OB49",
         }
-        response = requests.get(LIKE_API_URL, params=params, headers=headers, timeout=10)
+        response = requests.get(LIKE_API_URL, params=params, headers=headers, timeout=5)
         try:
             return response.status_code, response.json()
         except:
@@ -169,7 +169,7 @@ def FOX_RequestAddingFriend(token, target_id):
 def get_player_info(uid):
     try:
         url = f"{PLAYER_INFO_URL}?uid={uid}&region=me"
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=5)
         if response.status_code == 200:
             data = response.json()
             basic = data.get('basicInfo', {})
