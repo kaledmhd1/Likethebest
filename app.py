@@ -188,7 +188,7 @@ def send_likes():
         if status == 200:
             success_count += 1
             successful_uids.append(uid)
-            if success_count >= 600:
+            if success_count >= 60:
                 stop_flag.set()
         else:
             failed_count += 1
