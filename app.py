@@ -138,7 +138,7 @@ def send_likes():
         last_tokens_refresh_time = now
 
     # تحديث الحسابات المتخطاة كل ساعة
-    if now - last_skipped_refresh_time >= 3600:
+    if now - last_skipped_refresh_time >= 10000:
         print("[AUTO SKIPPED REFRESH] محاولة تحديث الحسابات المتخطاة...")
         try:
             refresh_skipped_tokens()
