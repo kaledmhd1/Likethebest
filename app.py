@@ -12,7 +12,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 app = Flask(__name__)
 
 LIKE_API_URL = "https://arifi-like-token.vercel.app/like"
-PLAYER_INFO_URL = "https://razor-info.vercel.app/player-info"
+PLAYER_INFO_URL = "https://info-ch9ayfa.vercel.app"
 MAX_PARALLEL_REQUESTS = 40
 LIKE_TARGET_EXPIRY = 86400  # 24 ساعة
 
@@ -143,14 +143,14 @@ def FOX_RequestAddingFriend(token, target_id):
 
 def get_player_info(uid):
     try:
-        url = f"{PLAYER_INFO_URL}?uid={uid}&region=me"
+        url = f"{PLAYER_INFO_URL}/{uid}"
         response = requests.get(url, timeout=5)
         if response.status_code == 200:
             data = response.json()
-            basic = data.get('basicInfo', {})
-            nickname = basic.get('nickname', 'Unknown')
-            liked = basic.get('liked', 0)
-            accountId = basic.get('accountId', uid)
+            basic = data.get('basicinfo', [{}])[0]
+            nickname = basic.get('username', 'Unknown')
+            liked = basic.get('likes', 0)
+            accountId = uid
             return {"nickname": nickname, "liked": liked, "accountId": accountId}
     except Exception as e:
         print(f"[PLAYER INFO ERROR] UID {uid} -> {e}")
