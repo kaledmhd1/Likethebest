@@ -129,7 +129,7 @@ def send_likes():
     now = time.time()
 
     # تحديث التوكنات كل 10 دقائق
-    if now - last_tokens_refresh_time >= 600:
+    if now - last_tokens_refresh_time >= 3600:
         print("[AUTO REFRESH] تحديث توكنات الحسابات...")
         try:
             refresh_all_tokens()
@@ -188,7 +188,7 @@ def send_likes():
         if status == 200:
             success_count += 1
             successful_uids.append(uid)
-            if success_count >= 100:
+            if success_count >= 80:
                 stop_flag.set()
         else:
             failed_count += 1
