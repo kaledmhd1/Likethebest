@@ -14,7 +14,7 @@ app = Flask(__name__)
 JWT_API_URL = "https://jwt-gen-api-v2.onrender.com/token"
 LIKE_API_URL = "https://arifi-like-token.vercel.app/like"
 PLAYER_INFO_URL = "https://razor-info.vercel.app/player-info"
-MAX_PARALLEL_REQUESTS = 100
+MAX_PARALLEL_REQUESTS = 25
 LIKE_TARGET_EXPIRY = 86400          # 24 ساعة
 
 accounts_passwords = {
