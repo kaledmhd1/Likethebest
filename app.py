@@ -13,7 +13,7 @@ app = Flask(__name__)
 
 LIKE_API_URL = "https://arifi-like-token.vercel.app/like"
 PLAYER_INFO_URL = "https://info-ch9ayfa.vercel.app"
-MAX_PARALLEL_REQUESTS = 40
+MAX_PARALLEL_REQUESTS = 45
 LIKE_TARGET_EXPIRY = 86400  # 24 ساعة
 
 accounts_passwords = {
@@ -743,7 +743,7 @@ def FOX_RequestAddingFriend(token, target_id):
             "X-GA": "v1 1",
             "ReleaseVersion": "OB50",
         }
-        response = requests.get(LIKE_API_URL, params=params, headers=headers, timeout=10)
+        response = requests.get(LIKE_API_URL, params=params, headers=headers, timeout=5)
         try:
             return response.status_code, response.json()
         except:
