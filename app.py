@@ -12,7 +12,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 app = Flask(__name__)
 
 LIKE_API_URL = "https://arifi-like-token.vercel.app/like"
-PLAYER_INFO_URL = "https://info-ch9ayfa.vercel.app"
+PLAYER_INFO_URL = "https://bngx-info-player-x551.onrender.com/"
 MAX_PARALLEL_REQUESTS = 41
 LIKE_TARGET_EXPIRY = 86400  # 24 ساعة
 
