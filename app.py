@@ -1,23 +1,21 @@
 from flask import Flask, request, jsonify
 import requests
-import json
 import threading
 import time
 import os
 import urllib3
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
 app = Flask(__name__)
 
 LIKE_API_URL = "https://arifi-like-token.vercel.app/like"
-PLAYER_INFO_URL = "https://bngx-info-player-x551.onrender.com/"
-MAX_PARALLEL_REQUESTS = 20
-LIKE_TARGET_EXPIRY = 86400  # 24 ساعة
+PLAYER_INFO_URL = "https://bngx-visit-jwt.onrender.com/{uid}"
+TOKEN_API = "https://ffwlxd-access-jwt.vercel.app/api/get_jwt?guest_uid={uid}&guest_password={password}"
 
-# ⚠️ أدخل حساباتك هنا
-accounts_passwords = {
+# الحسابات كقاموس: uid -> password
+accounts = {
     "4016272811": "7C9B67FD6A47A62C04FCD7BB68EF479168B7520A3E3F4EDA1415DCCF10F46311",
     "3686947614": "BBCB287183F61B1D6987DF3CC8F63BE5DF02497D10D61FD8A690AEA9EEC9D7C6",
     "3703589868": "D8AC9A88EC82547D2EEE5DF74A9DCA8938A6224F3135A3F79B61C4D72DC76D9F",
@@ -673,181 +671,124 @@ accounts_passwords = {
 }
 
 jwt_tokens_cache = {}
-liked_targets_cache = {}
-skipped_accounts = {}
-
+last_token_refresh = 0  # وقت آخر تحديث
+last_like_sent = {}  # uid: timestamp
 cache_lock = threading.Lock()
-liked_targets_lock = threading.Lock()
-skipped_lock = threading.Lock()
 
-last_tokens_refresh_time = 0
-
-
-# تقسيم الحسابات إلى مجموعات للتحديث المتدرج
-def split_accounts_into_groups(accounts_dict, n_groups=4):
-    items = list(accounts_dict.items())
-    group_size = (len(items) + n_groups - 1) // n_groups
-    return [dict(items[i:i + group_size]) for i in range(0, len(items), group_size)]
-
-
-def add_to_skipped(uid):
-    with skipped_lock:
-        skipped_accounts[uid] = time.time()
-    with cache_lock:
-        if uid in jwt_tokens_cache:
-            del jwt_tokens_cache[uid]
-
-
-def is_skipped(uid):
-    with skipped_lock:
-        if uid in skipped_accounts and time.time() - skipped_accounts[uid] < 86400:
-            return True
-        skipped_accounts.pop(uid, None)
-        return False
-
-
-def get_jwt_token(uid, password):
+def fetch_jwt(uid, password):
     try:
-        url = f"https://ffwlxd-access-jwt.vercel.app/api/get_jwt?guest_uid={uid}&guest_password={password}"
-        res = requests.get(url, timeout=10)
-        print(f"[JWT] UID {uid} -> {res.status_code}")
-        if res.status_code == 200:
-            data = res.json()
-            return data.get("BearerAuth")
+        url = TOKEN_API.format(uid=uid, password=password)
+        r = requests.get(url, timeout=10)
+        data = r.json()
+        return data.get("BearerAuth")
     except Exception as e:
-        print(f"[JWT ERROR] UID {uid} -> {e}")
-    return None
-
-
-def refresh_tokens_group(accounts_group, group_index):
-    new_cache = {}
-    print(f"[GROUP {group_index}] تحديث توكنات {len(accounts_group)} حساب...")
-    with ThreadPoolExecutor(max_workers=MAX_PARALLEL_REQUESTS) as executor:
-        futures = {executor.submit(get_jwt_token, uid, pwd): uid for uid, pwd in accounts_group.items() if not is_skipped(uid)}
-        for future in futures:
-            uid = futures[future]
-            token = future.result()
-            if token:
-                new_cache[uid] = token
-    with cache_lock:
-        jwt_tokens_cache.update(new_cache)
-    print(f"[GROUP {group_index}] ✅ تم تحديث {len(new_cache)} توكن.")
-
+        print(f"[JWT ERROR] {uid}: {e}")
+        return None
 
 def refresh_all_tokens():
-    print("[TOKEN REFRESH] تحديث جميع التوكنات...")
-    groups = split_accounts_into_groups(accounts_passwords)
-    for i, group in enumerate(groups):
-        refresh_tokens_group(group, i + 1)
-        time.sleep(1)
-    print("[TOKEN REFRESH] ✅ الانتهاء من التحديث.")
-
-
-def FOX_RequestAddingFriend(token, target_id):
-    try:
-        params = {"token": token, "id": target_id}
-        headers = {
-            "Accept": "*/*",
-            "Authorization": f"Bearer {token}",
-            "User-Agent": "Free Fire/2019117061 CFNetwork/1399 Darwin/22.1.0",
-            "X-GA": "v1 1",
-            "ReleaseVersion": "OB50",
-        }
-        res = requests.get(LIKE_API_URL, params=params, headers=headers, timeout=7)
-        try:
-            return res.status_code, res.json()
-        except:
-            return res.status_code, res.text
-    except Exception as e:
-        return 0, str(e)
-
+    global jwt_tokens_cache, last_token_refresh
+    print("[REFRESH] تحديث التوكنات جارٍ...")
+    temp_cache = {}
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = []
+        uids = list(accounts.keys())
+        passwords = list(accounts.values())
+        for uid, password in zip(uids, passwords):
+            futures.append(executor.submit(fetch_jwt, uid, password))
+        for i, future in enumerate(futures):
+            token = future.result()
+            uid = uids[i]
+            if token:
+                temp_cache[uid] = token
+            else:
+                print(f"[TOKEN MISSING] {uid}")
+    with cache_lock:
+        jwt_tokens_cache = temp_cache
+        last_token_refresh = time.time()
+    print(f"[REFRESH] تم تحديث {len(jwt_tokens_cache)} توكن.")
 
 def get_player_info(uid):
     try:
-        res = requests.get(f"{PLAYER_INFO_URL}/{uid}", timeout=5)
-        if res.status_code == 200:
-            data = res.json()
-            basic = data.get("basicinfo", [{}])[0]
-            return {
-                "nickname": basic.get("username", "Unknown"),
-                "liked": basic.get("likes", 0),
-                "accountId": uid
-            }
+        r = requests.get(PLAYER_INFO_URL.format(uid=uid), timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            name = data.get("name", "غير معروف")
+            likes = data.get("likes", 0)
+            return name, likes
     except Exception as e:
-        print(f"[INFO ERROR] {uid} -> {e}")
-    return {"nickname": "Unknown", "liked": 0, "accountId": uid}
-
+        print(f"[INFO ERROR] {uid}: {e}")
+    return "غير معروف", 0
 
 @app.route("/add_likes", methods=["GET"])
 def add_likes():
-    global last_tokens_refresh_time
-    uid = request.args.get("uid")
+    global last_token_refresh
+    start_time = time.time()
+    target_id = request.args.get("uid")
+    if not target_id:
+        return jsonify({"error": "يرجى تحديد uid"}), 400
 
-    if not uid or not uid.isdigit():
-        return jsonify({"error": "uid مطلوب"}), 400
-
+    # تحديث التوكنات إذا مضى أكثر من ساعة على آخر تحديث
     now = time.time()
-    if now - last_tokens_refresh_time >= 3600:
-        threading.Thread(target=refresh_all_tokens).start()
-        last_tokens_refresh_time = now
-
-    with liked_targets_lock:
-        expired = [u for u, t in liked_targets_cache.items() if now - t > LIKE_TARGET_EXPIRY]
-        for u in expired:
-            del liked_targets_cache[u]
-
-        if uid in liked_targets_cache:
-            return jsonify({"message": f"🚫 UID {uid} تم لايكه مسبقًا. انتظر 24 ساعة."}), 429
-
-        liked_targets_cache[uid] = now
+    if now - last_token_refresh > 3600:  # 3600 ثانية = ساعة
+        refresh_all_tokens()
 
     with cache_lock:
         if not jwt_tokens_cache:
-            return jsonify({"message": "🚧 التوكنات قيد التحميل... حاول بعد قليل."}), 503
+            return jsonify({"message": "🚧 التوكنات قيد التحميل..."}), 503
+        tokens = list(jwt_tokens_cache.items())
 
-    threading.Thread(target=send_likes_background, args=(uid,)).start()
-    return jsonify({"message": f"✅ جاري إرسال لايكات لـ UID {uid}..."})
+    # تحقق من التوقيت (مرة كل 24 ساعة)
+    if target_id in last_like_sent:
+        elapsed = now - last_like_sent[target_id]
+        if elapsed < 86400:  # 24 ساعة
+            remaining = int((86400 - elapsed) // 60)
+            return jsonify({
+                "error": "⏱ لا يمكن إرسال لايكات لهذا الحساب الآن.",
+                "try_again_in_minutes": remaining
+            }), 429
 
+    player_name, likes_before = get_player_info(target_id)
 
-def send_likes_background(uid):
-    print(f"[LIKE START] UID {uid}")
-    try:
-        player = get_player_info(uid)
-        before = player["liked"]
+    success_count = 0
+    failed_count = 0
 
-        with cache_lock:
-            tokens = dict(jwt_tokens_cache)
+    def send(token):
+        nonlocal success_count, failed_count
+        headers = {"Authorization": f"Bearer {token}"}
+        payload = {"receiverId": target_id}
+        try:
+            r = requests.post(LIKE_API_URL, json=payload, headers=headers, timeout=10)
+            if r.status_code == 200:
+                success_count += 1
+            else:
+                failed_count += 1
+        except:
+            failed_count += 1
 
-        success = 0
-        stop_flag = threading.Event()
+    with ThreadPoolExecutor(max_workers=30) as executor:
+        for uid, token in tokens:
+            executor.submit(send, token)
 
-        def process(account_uid, token):
-            nonlocal success
-            if stop_flag.is_set():
-                return
-            status, res = FOX_RequestAddingFriend(token, uid)
-            if isinstance(res, dict) and "BR_ACCOUNT_DAILY_LIKE_PROFILE_LIMIT" in str(res.get("response_text", "")):
-                add_to_skipped(account_uid)
-            elif status == 200:
-                success += 1
-                if success >= 60:
-                    stop_flag.set()
+    last_like_sent[target_id] = now
+    likes_after = likes_before + success_count
+    elapsed_time = round(time.time() - start_time, 2)
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
-        with ThreadPoolExecutor(max_workers=MAX_PARALLEL_REQUESTS) as executor:
-            futures = [executor.submit(process, uid, token) for uid, token in tokens.items()]
-            for f in futures:
-                f.result()
-                if stop_flag.is_set():
-                    break
+    return jsonify({
+        "message": "✅ تم الانتهاء من إرسال اللايكات.",
+        "target_name": player_name,
+        "target_uid": target_id,
+        "likes_before": likes_before,
+        "likes_after": likes_after,
+        "likes_sent": success_count,
+        "success_count": success_count,
+        "failed_count": failed_count,
+        "time_taken_seconds": elapsed_time,
+        "timestamp_utc": timestamp
+    })
 
-        after = before + success
-        print(f"[LIKE DONE] UID {uid} 👍 {success} لايكات (قبل: {before}, بعد: {after})")
-    except Exception as e:
-        print(f"[LIKE ERROR] UID {uid} -> {e}")
-
-
-if __name__ == "__main__":
-    print("[INIT] ✅ تشغيل السيرفر... التوكنات ستُحدث بالخلفية")
-    threading.Thread(target=refresh_all_tokens).start()  # تحميل غير متزامن
+if __name__ == '__main__':
+    print("[INIT] بدء التشغيل...")
+    refresh_all_tokens()  # أول تحديث
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
