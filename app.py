@@ -777,7 +777,7 @@ def FOX_RequestAddingFriend(token, target_id):
             "X-GA": "v1 1",
             "ReleaseVersion": "OB50",
         }
-        response = requests.get(LIKE_API_URL, params=params, headers=headers, timeout=15)
+        response = requests.get(LIKE_API_URL, params=params, headers=headers, timeout=30)
         try:
             return response.status_code, response.json()
         except:
