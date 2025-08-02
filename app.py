@@ -785,7 +785,14 @@ def add_likes():
         return jsonify({"error": "uid مطلوب"}), 400
 
     now = time.time()
-    if now - last_tokens_refresh_time >= 3600:
+
+    # إذا لم يتم التحديث من قبل، قم بتحديث التوكنات الآن
+    if last_tokens_refresh_time == 0:
+        refresh_all_tokens()
+        last_tokens_refresh_time = now
+
+    # تحديث كل ساعة لاحقًا
+    elif now - last_tokens_refresh_time >= 3600:
         threading.Thread(target=refresh_all_tokens).start()
         last_tokens_refresh_time = now
 
@@ -797,8 +804,9 @@ def add_likes():
             return jsonify({"message": f"🚫 UID {uid} تم لايكه مسبقًا. انتظر 24 ساعة."}), 429
         liked_targets_cache[uid] = now
 
-    # حذف التحقق من التوكنات الفارغة
-    # سيتم استخدام التوكنات المتوفرة مهما كان عددها
+    with cache_lock:
+        if not jwt_tokens_cache:
+            return jsonify({"message": "❌ لا توجد توكنات متاحة حالياً. حاول لاحقًا."}), 503
 
     likes_sent = send_likes_background(uid)
     return jsonify({
@@ -850,6 +858,5 @@ def send_likes_background(uid):
 
 if __name__ == "__main__":
     print("[INIT] ✅ تشغيل السيرفر... التوكنات ستُحدث بالخلفية")
-    threading.Thread(target=refresh_all_tokens).start()
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
