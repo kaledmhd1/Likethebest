@@ -797,15 +797,15 @@ def add_likes():
             return jsonify({"message": f"🚫 UID {uid} تم لايكه مسبقًا. انتظر 24 ساعة."}), 429
         liked_targets_cache[uid] = now
 
-    with cache_lock:
-        if not jwt_tokens_cache:
-            return jsonify({"message": "🚧 التوكنات قيد التحميل... حاول بعد قليل."}), 503
+    # حذف التحقق من التوكنات الفارغة
+    # سيتم استخدام التوكنات المتوفرة مهما كان عددها
 
     likes_sent = send_likes_background(uid)
     return jsonify({
         "message": f"✅ تم إرسال لايكات لـ UID {uid} بنجاح!",
         "likes_sent": likes_sent
     })
+
 
 
 def send_likes_background(uid):
