@@ -13,7 +13,7 @@ app = Flask(__name__)
 
 LIKE_API_URL = "https://arifi-like-token.vercel.app/like"
 PLAYER_INFO_URL = "https://bngx-info-player-x551.onrender.com/"
-MAX_PARALLEL_REQUESTS = 41
+MAX_PARALLEL_REQUESTS = 20  # تقليل العدد لتقليل الضغط على Render
 LIKE_TARGET_EXPIRY = 86400  # 24 ساعة
 
 accounts_passwords = {
@@ -680,9 +680,7 @@ cache_lock = threading.Lock()
 skipped_lock = threading.Lock()
 
 last_tokens_refresh_time = 0
-last_skipped_refresh_time = 0
 
-# تقسيم الحسابات إلى مجموعات
 def split_accounts_into_groups(accounts_dict, n_groups=4):
     items = list(accounts_dict.items())
     group_size = (len(items) + n_groups - 1) // n_groups
@@ -779,7 +777,7 @@ def get_player_info(uid):
     return {"nickname": "Unknown", "liked": 0, "accountId": uid}
 
 @app.route('/add_likes', methods=['GET'])
-def send_likes():
+def add_likes():
     global last_tokens_refresh_time
 
     target_id = request.args.get('uid')
@@ -787,8 +785,6 @@ def send_likes():
         return jsonify({"error": "uid is required and must be an integer"}), 400
 
     now = time.time()
-
-    # تحديث التوكنات فقط كل ساعة (بدون خيوط خلفية)
     if now - last_tokens_refresh_time >= 3600:
         print("[AUTO REFRESH] تحديث توكنات الحسابات...")
         try:
@@ -797,77 +793,63 @@ def send_likes():
             print(f"[AUTO REFRESH ERROR] فشل تحديث التوكنات: {e}")
         last_tokens_refresh_time = now
 
-    player_info = get_player_info(target_id)
-    likes_before = player_info["liked"]
-
     with liked_targets_lock:
         to_delete = [uid for uid, ts in liked_targets_cache.items() if now - ts > LIKE_TARGET_EXPIRY]
         for uid in to_delete:
             del liked_targets_cache[uid]
 
         if target_id in liked_targets_cache:
-            return Response(json.dumps({
-                "message": f"🚫 لا يمكن إرسال لايك لنفس الـ UID {target_id} إلا بعد مرور 24 ساعة من آخر مرة."
-            }, ensure_ascii=False), mimetype='application/json'), 429
+            return jsonify({
+                "message": f"🚫 لا يمكن إرسال لايك لنفس UID {target_id} إلا بعد مرور 24 ساعة."
+            }), 429
 
         liked_targets_cache[target_id] = now
 
-    with cache_lock:
-        if not jwt_tokens_cache:
-            return Response(json.dumps({
-                "message": "🚧 التوكنات لم تُجهز بعد، الرجاء المحاولة لاحقاً."
-            }, ensure_ascii=False), mimetype='application/json'), 503
+    threading.Thread(target=send_likes_background, args=(target_id,)).start()
 
-        tokens_to_use = dict(jwt_tokens_cache)
+    return jsonify({"message": f"✅ يتم الآن إرسال لايكات لـ UID {target_id}... انتظر قليلاً."})
 
-    success_count = 0
-    skipped_count = 0
-    failed_count = 0
-    successful_uids = []
-    stop_flag = threading.Event()
+def send_likes_background(target_id):
+    print(f"[START LIKE] بدء إرسال لايكات لـ {target_id}")
+    try:
+        player_info = get_player_info(target_id)
+        likes_before = player_info["liked"]
 
-    def process(uid, token):
-        nonlocal success_count, skipped_count, failed_count
-        if stop_flag.is_set():
-            return
-        status, content = FOX_RequestAddingFriend(token, target_id)
-        if isinstance(content, dict) and "BR_ACCOUNT_DAILY_LIKE_PROFILE_LIMIT" in str(content.get("response_text", "")):
-            skipped_count += 1
-            add_to_skipped(uid)
-            return
-        if status == 200:
-            success_count += 1
-            successful_uids.append(uid)
-            if success_count >= 60:
-                stop_flag.set()
-        else:
-            failed_count += 1
+        with cache_lock:
+            tokens_to_use = dict(jwt_tokens_cache)
 
-    with ThreadPoolExecutor(max_workers=MAX_PARALLEL_REQUESTS) as executor:
-        futures = [executor.submit(process, uid, token) for uid, token in tokens_to_use.items()]
-        for future in futures:
-            future.result()
+        success_count = 0
+        skipped_count = 0
+        failed_count = 0
+        stop_flag = threading.Event()
+
+        def process(uid, token):
+            nonlocal success_count, skipped_count, failed_count
             if stop_flag.is_set():
-                break
+                return
+            status, content = FOX_RequestAddingFriend(token, target_id)
+            if isinstance(content, dict) and "BR_ACCOUNT_DAILY_LIKE_PROFILE_LIMIT" in str(content.get("response_text", "")):
+                skipped_count += 1
+                add_to_skipped(uid)
+                return
+            if status == 200:
+                success_count += 1
+                if success_count >= 60:
+                    stop_flag.set()
+            else:
+                failed_count += 1
 
-    likes_after = likes_before + success_count
+        with ThreadPoolExecutor(max_workers=MAX_PARALLEL_REQUESTS) as executor:
+            futures = [executor.submit(process, uid, token) for uid, token in tokens_to_use.items()]
+            for future in futures:
+                future.result()
+                if stop_flag.is_set():
+                    break
 
-    message = (
-        f"✅ الاسم: {player_info['nickname']}\n"
-        f"🆔 UID: {player_info['accountId']}\n"
-        f"👍 قبل: {likes_before} لايك\n"
-        f"➕ المضافة: {success_count} لايك\n"
-        f"💯 بعد: {likes_after} لايك"
-    )
-
-    return Response(json.dumps({
-        "message": message
-    }, ensure_ascii=False), mimetype='application/json')
-
-
-def refresh_skipped_tokens():
-    pass  # حذف الخلفية نهائيًا حسب تعليماتك
-
+        likes_after = likes_before + success_count
+        print(f"[DONE] UID {target_id} 👍 تمت إضافة {success_count} لايكات (قبل: {likes_before}، بعد: {likes_after})")
+    except Exception as e:
+        print(f"[ERROR BACKGROUND LIKE] UID {target_id} -> {e}")
 
 if __name__ == '__main__':
     print("[INIT] بدء تشغيل السيرفر وتحديث التوكنات...")
