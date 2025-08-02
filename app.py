@@ -729,15 +729,18 @@ def refresh_all_tokens():
 
 def FOX_RequestAddingFriend(token, target_id):
     try:
-        params = {"token": token, "id": target_id}
+        url = f"https://like-bjwt-bngx.onrender.com/send_like"
+        params = {
+            "player_id": target_id,
+            "token": token
+        }
         headers = {
             "Accept": "*/*",
-            "Authorization": f"Bearer {token}",
             "User-Agent": "Free Fire/2019117061 CFNetwork/1399 Darwin/22.1.0",
             "X-GA": "v1 1",
             "ReleaseVersion": "OB50",
         }
-        response = requests.get(LIKE_API_URL, params=params, headers=headers, timeout=10)
+        response = requests.get(url, params=params, headers=headers, timeout=10)
         try:
             return response.status_code, response.json()
         except:
