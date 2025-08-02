@@ -682,6 +682,12 @@ skipped_lock = threading.Lock()
 last_tokens_refresh_time = 0
 last_skipped_refresh_time = 0
 
+# تقسيم الحسابات إلى مجموعات
+def split_accounts_into_groups(accounts_dict, n_groups=4):
+    items = list(accounts_dict.items())
+    group_size = (len(items) + n_groups - 1) // n_groups
+    return [dict(items[i:i + group_size]) for i in range(0, len(items), group_size)]
+
 def add_to_skipped(uid):
     with skipped_lock:
         skipped_accounts[uid] = time.time()
@@ -712,26 +718,32 @@ def get_jwt_token(uid, password):
         print(f"[JWT ERROR] UID {uid} -> {e}")
     return None
 
-def refresh_all_tokens():
-    global jwt_tokens_cache
-    print("[TOKEN REFRESH] بدء تحديث توكنات JWT لجميع الحسابات (غير المتخطاة)...")
+def refresh_tokens_group(accounts_group, group_index):
     new_cache = {}
+    print(f"[GROUP {group_index}] بدء تحديث توكنات المجموعة ({len(accounts_group)}) حساب...")
     with ThreadPoolExecutor(max_workers=MAX_PARALLEL_REQUESTS) as executor:
-        futures = {executor.submit(get_jwt_token, uid, pwd): uid for uid, pwd in accounts_passwords.items() if not is_skipped(uid)}
+        futures = {executor.submit(get_jwt_token, uid, pwd): uid for uid, pwd in accounts_group.items() if not is_skipped(uid)}
         for future in futures:
             uid = futures[future]
             token = future.result()
             if token:
                 new_cache[uid] = token
             else:
-                print(f"[TOKEN REFRESH] فشل تحديث التوكن للحساب {uid}")
+                print(f"[GROUP {group_index}] فشل تحديث التوكن للحساب {uid}")
     with cache_lock:
         for uid in new_cache:
             jwt_tokens_cache[uid] = new_cache[uid]
         for uid in list(jwt_tokens_cache.keys()):
             if is_skipped(uid):
                 del jwt_tokens_cache[uid]
-    print(f"[TOKEN REFRESH] تم تحديث {len(new_cache)} توكنات بنجاح.")
+    print(f"[GROUP {group_index}] ✅ تم تحديث {len(new_cache)} توكنات.")
+
+def refresh_all_tokens():
+    print("[TOKEN REFRESH] تقسيم الحسابات إلى 4 مجموعات وتحديثها بالتتابع...")
+    groups = split_accounts_into_groups(accounts_passwords, n_groups=4)
+    for i, group in enumerate(groups):
+        refresh_tokens_group(group, i + 1)
+        time.sleep(1)
 
 def FOX_RequestAddingFriend(token, target_id):
     try:
@@ -864,29 +876,29 @@ def refresh_skipped_tokens():
     with skipped_lock:
         uids = list(skipped_accounts.keys())
 
-    with ThreadPoolExecutor(max_workers=MAX_PARALLEL_REQUESTS) as executor:
-        futures = {}
-        for uid in uids:
-            pwd = accounts_passwords.get(uid)
-            if pwd:
+    skipped_accounts_grouped = split_accounts_into_groups({uid: accounts_passwords[uid] for uid in uids if uid in accounts_passwords}, n_groups=4)
+    for i, group in enumerate(skipped_accounts_grouped):
+        print(f"[SKIPPED REFRESH] تحديث المجموعة {i+1} ({len(group)} حساب)...")
+        with ThreadPoolExecutor(max_workers=MAX_PARALLEL_REQUESTS) as executor:
+            futures = {}
+            for uid, pwd in group.items():
                 futures[executor.submit(get_jwt_token, uid, pwd)] = uid
-        for future in futures:
-            uid = futures[future]
-            token = future.result()
-            if token:
-                status, content = FOX_RequestAddingFriend(token, target_id="0")
-                if status == 200:
-                    if not (isinstance(content, dict) and "BR_ACCOUNT_DAILY_LIKE_PROFILE_LIMIT" in str(content.get("response_text", ""))):
-                        print(f"[SKIPPED REFRESH] تم إعادة تفعيل الحساب {uid} بعد انتهاء الحد اليومي.")
-                        with skipped_lock:
-                            if uid in skipped_accounts:
-                                del skipped_accounts[uid]
-                        with cache_lock:
-                            jwt_tokens_cache[uid] = token
+            for future in futures:
+                uid = futures[future]
+                token = future.result()
+                if token:
+                    status, content = FOX_RequestAddingFriend(token, target_id="0")
+                    if status == 200:
+                        if not (isinstance(content, dict) and "BR_ACCOUNT_DAILY_LIKE_PROFILE_LIMIT" in str(content.get("response_text", ""))):
+                            print(f"[SKIPPED REFRESH] ✅ الحساب {uid} لم يعد في الحد اليومي.")
+                            with skipped_lock:
+                                if uid in skipped_accounts:
+                                    del skipped_accounts[uid]
+                            with cache_lock:
+                                jwt_tokens_cache[uid] = token
                 else:
-                    print(f"[SKIPPED REFRESH] الحساب {uid} لا يزال في الحد اليومي أو فشل التحقق.")
-            else:
-                print(f"[SKIPPED REFRESH] فشل تحديث التوكن للحساب {uid}")
+                    print(f"[SKIPPED REFRESH] ❌ فشل تحديث التوكن للحساب {uid}")
+        time.sleep(1)
 
 if __name__ == '__main__':
     print("[INIT] بدء تشغيل السيرفر وتحديث التوكنات...")
