@@ -780,7 +780,7 @@ def get_player_info(uid):
 
 @app.route('/add_likes', methods=['GET'])
 def send_likes():
-    global last_tokens_refresh_time, last_skipped_refresh_time
+    global last_tokens_refresh_time
 
     target_id = request.args.get('uid')
     if not target_id or not target_id.isdigit():
@@ -788,6 +788,7 @@ def send_likes():
 
     now = time.time()
 
+    # تحديث التوكنات فقط كل ساعة (بدون خيوط خلفية)
     if now - last_tokens_refresh_time >= 3600:
         print("[AUTO REFRESH] تحديث توكنات الحسابات...")
         try:
@@ -795,14 +796,6 @@ def send_likes():
         except Exception as e:
             print(f"[AUTO REFRESH ERROR] فشل تحديث التوكنات: {e}")
         last_tokens_refresh_time = now
-
-    if now - last_skipped_refresh_time >= 10000:
-        print("[AUTO SKIPPED REFRESH] محاولة تحديث الحسابات المتخطاة...")
-        try:
-            refresh_skipped_tokens()
-        except Exception as e:
-            print(f"[AUTO SKIPPED REFRESH ERROR] فشل تحديث المتخطاة: {e}")
-        last_skipped_refresh_time = now
 
     player_info = get_player_info(target_id)
     likes_before = player_info["liked"]
@@ -871,40 +864,15 @@ def send_likes():
         "message": message
     }, ensure_ascii=False), mimetype='application/json')
 
-def refresh_skipped_tokens():
-    print("[SKIPPED REFRESH] بدء تحديث توكنات الحسابات المتخطاة (الحد اليومي)...")
-    with skipped_lock:
-        uids = list(skipped_accounts.keys())
 
-    skipped_accounts_grouped = split_accounts_into_groups({uid: accounts_passwords[uid] for uid in uids if uid in accounts_passwords}, n_groups=4)
-    for i, group in enumerate(skipped_accounts_grouped):
-        print(f"[SKIPPED REFRESH] تحديث المجموعة {i+1} ({len(group)} حساب)...")
-        with ThreadPoolExecutor(max_workers=MAX_PARALLEL_REQUESTS) as executor:
-            futures = {}
-            for uid, pwd in group.items():
-                futures[executor.submit(get_jwt_token, uid, pwd)] = uid
-            for future in futures:
-                uid = futures[future]
-                token = future.result()
-                if token:
-                    status, content = FOX_RequestAddingFriend(token, target_id="0")
-                    if status == 200:
-                        if not (isinstance(content, dict) and "BR_ACCOUNT_DAILY_LIKE_PROFILE_LIMIT" in str(content.get("response_text", ""))):
-                            print(f"[SKIPPED REFRESH] ✅ الحساب {uid} لم يعد في الحد اليومي.")
-                            with skipped_lock:
-                                if uid in skipped_accounts:
-                                    del skipped_accounts[uid]
-                            with cache_lock:
-                                jwt_tokens_cache[uid] = token
-                else:
-                    print(f"[SKIPPED REFRESH] ❌ فشل تحديث التوكن للحساب {uid}")
-        time.sleep(1)
+def refresh_skipped_tokens():
+    pass  # حذف الخلفية نهائيًا حسب تعليماتك
+
 
 if __name__ == '__main__':
     print("[INIT] بدء تشغيل السيرفر وتحديث التوكنات...")
     try:
         refresh_all_tokens()
-        refresh_skipped_tokens()
         print("[INIT] ✅ تم التحديث الأولي.")
     except Exception as e:
         print(f"[INIT ERROR] فشل التحديث الأولي: {e}")
