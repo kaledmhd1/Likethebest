@@ -13,7 +13,7 @@ app = Flask(__name__)
 
 LIKE_API_URL = "https://arifi-like-token.vercel.app/like"
 PLAYER_INFO_URL = "https://bngx-info-player-x551.onrender.com/"
-MAX_PARALLEL_REQUESTS = 20
+MAX_PARALLEL_REQUESTS = 40
 LIKE_TARGET_EXPIRY = 86400  # 24 ساعة
 
 # ⚠️ أدخل حساباتك هنا
