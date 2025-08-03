@@ -867,7 +867,7 @@ def send_likes():
             if stats.get("success", 0) == 1:
                 success_count += 1
                 successful_uids.append(uid)
-                if success_count >= 100:
+                if success_count >= 60:
                     stop_flag.set()
             elif stats.get("daily_limited_reached", 0) == 1:
                 skipped_count += 1
