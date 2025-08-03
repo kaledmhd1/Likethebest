@@ -5,18 +5,18 @@ import threading
 import time
 import os
 import urllib3
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 
-LIKE_API_URL = "https://bngx-jwt-lik.vercel.app/send_like"
+LIKE_API_URL = "https://like-bjwt-bngx.onrender.com/send_like"
 PLAYER_INFO_URL = "https://razor-info.vercel.app/player-info"
-MAX_PARALLEL_REQUESTS = 41
+MAX_PARALLEL_REQUESTS = 40
 LIKE_TARGET_EXPIRY = 86400  # 24 ساعة
 
-# تقسيم الحسابات إلى 8 قروبات
 group_accounts = [
     {
     "4016272811": "7C9B67FD6A47A62C04FCD7BB68EF479168B7520A3E3F4EDA1415DCCF10F46311",
@@ -695,35 +695,32 @@ accounts_passwords = {}
 for group in group_accounts:
     accounts_passwords.update(group)
 
-skipped_accounts = {}
 jwt_tokens_cache = {}
 liked_targets_cache = {}
 
 liked_targets_lock = threading.Lock()
 cache_lock = threading.Lock()
-skipped_lock = threading.Lock()
 group_index_lock = threading.Lock()
 
 group_index = 0
 last_tokens_refresh_time = 0
-last_skipped_refresh_time = 0
 
-def add_to_skipped(uid):
-    with skipped_lock:
-        skipped_accounts[uid] = time.time()
-    with cache_lock:
-        if uid in jwt_tokens_cache:
-            del jwt_tokens_cache[uid]
+# استخدام UID حتى 100 مرة فقط كل 24 ساعة
+like_usage = defaultdict(lambda: {"count": 0, "last_reset": time.time()})
+like_usage_lock = threading.Lock()
 
-def is_skipped(uid):
-    with skipped_lock:
-        now = time.time()
-        if uid in skipped_accounts:
-            if now - skipped_accounts[uid] < 86400:
-                return True
-            else:
-                del skipped_accounts[uid]
-        return False
+def can_use_uid(uid):
+    now = time.time()
+    with like_usage_lock:
+        usage = like_usage[uid]
+        if now - usage["last_reset"] > 86400:
+            usage["count"] = 0
+            usage["last_reset"] = now
+        return usage["count"] < 100
+
+def record_uid_usage(uid):
+    with like_usage_lock:
+        like_usage[uid]["count"] += 1
 
 def get_jwt_token(uid, password):
     url = f"https://ffwlxd-access-jwt.vercel.app/api/get_jwt?guest_uid={uid}&guest_password={password}"
@@ -751,7 +748,7 @@ def refresh_all_tokens(group=None):
     with ThreadPoolExecutor(max_workers=MAX_PARALLEL_REQUESTS) as executor:
         futures = {
             executor.submit(get_jwt_token, uid, pwd): uid
-            for uid, pwd in accounts.items() if not is_skipped(uid)
+            for uid, pwd in accounts.items() if can_use_uid(uid)
         }
         for future in futures:
             uid = futures[future]
@@ -762,9 +759,6 @@ def refresh_all_tokens(group=None):
     with cache_lock:
         for uid in new_cache:
             jwt_tokens_cache[uid] = new_cache[uid]
-        for uid in list(jwt_tokens_cache.keys()):
-            if is_skipped(uid):
-                del jwt_tokens_cache[uid]
     print(f"[TOKEN REFRESH] تم تحديث {len(new_cache)} توكنات.")
 
 def FOX_RequestAddingFriend(token, target_id):
@@ -777,7 +771,7 @@ def FOX_RequestAddingFriend(token, target_id):
             "X-GA": "v1 1",
             "ReleaseVersion": "OB50",
         }
-        response = requests.get(LIKE_API_URL, params=params, headers=headers, timeout=60)
+        response = requests.get(LIKE_API_URL, params=params, headers=headers, timeout=10)
         try:
             return response.status_code, response.json()
         except:
@@ -802,7 +796,7 @@ def get_player_info(uid):
 
 @app.route('/add_likes', methods=['GET'])
 def send_likes():
-    global last_tokens_refresh_time, last_skipped_refresh_time, group_index
+    global group_index
 
     target_id = request.args.get('uid')
     if not target_id or not target_id.isdigit():
@@ -816,13 +810,6 @@ def send_likes():
 
     print(f"[ADD_LIKES] استخدام القروب رقم {current_group + 1}")
     refresh_all_tokens(group=current_group)
-
-    if now - last_skipped_refresh_time >= 10000:
-        try:
-            refresh_skipped_tokens()
-        except Exception as e:
-            print(f"[AUTO SKIPPED REFRESH ERROR] فشل تحديث المتخطاة: {e}")
-        last_skipped_refresh_time = now
 
     player_info = get_player_info(target_id)
     likes_before = player_info["liked"]
@@ -842,12 +829,12 @@ def send_likes():
     with cache_lock:
         tokens_to_use = {
             uid: token for uid, token in jwt_tokens_cache.items()
-            if uid in group_accounts[current_group]
+            if uid in group_accounts[current_group] and can_use_uid(uid)
         }
 
         if not tokens_to_use:
             return Response(json.dumps({
-                "message": "🚧 التوكنات لم تُجهز بعد، الرجاء المحاولة لاحقاً."
+                "message": "🚧 لا توجد حسابات متاحة حالياً، جرب لاحقاً."
             }, ensure_ascii=False), mimetype='application/json'), 503
 
     success_count = 0
@@ -861,19 +848,15 @@ def send_likes():
         if stop_flag.is_set():
             return
         status, content = FOX_RequestAddingFriend(token, target_id)
-
-        if status == 200 and isinstance(content, dict):
-            stats = content.get("stats", {})
-            if stats.get("daily_limited_reached", 0) == 1:
-                skipped_count += 1
-                add_to_skipped(uid)
-            elif stats.get("error", 1) == 0:
-                success_count += 1
-                successful_uids.append(uid)
-                if success_count >= 60:
-                    stop_flag.set()
-            else:
-                failed_count += 1
+        if isinstance(content, dict) and "BR_ACCOUNT_DAILY_LIKE_PROFILE_LIMIT" in str(content.get("response_text", "")):
+            skipped_count += 1
+            return
+        if status == 200:
+            success_count += 1
+            successful_uids.append(uid)
+            record_uid_usage(uid)
+            if success_count >= 60:
+                stop_flag.set()
         else:
             failed_count += 1
 
@@ -898,42 +881,11 @@ def send_likes():
         "message": message
     }, ensure_ascii=False), mimetype='application/json')
 
-
-def refresh_skipped_tokens():
-    print("[SKIPPED REFRESH] بدء تحديث توكنات الحسابات المتخطاة...")
-    with skipped_lock:
-        uids = list(skipped_accounts.keys())
-
-    with ThreadPoolExecutor(max_workers=MAX_PARALLEL_REQUESTS) as executor:
-        futures = {}
-        for uid in uids:
-            pwd = accounts_passwords.get(uid)
-            if pwd:
-                futures[executor.submit(get_jwt_token, uid, pwd)] = uid
-        for future in futures:
-            uid = futures[future]
-            token = future.result()
-            if token:
-                status, content = FOX_RequestAddingFriend(token, target_id="0")
-                if status == 200:
-                    if not (isinstance(content, dict) and "BR_ACCOUNT_DAILY_LIKE_PROFILE_LIMIT" in str(content.get("response_text", ""))):
-                        print(f"[SKIPPED REFRESH] تم إعادة تفعيل الحساب {uid}.")
-                        with skipped_lock:
-                            if uid in skipped_accounts:
-                                del skipped_accounts[uid]
-                        with cache_lock:
-                            jwt_tokens_cache[uid] = token
-                else:
-                    print(f"[SKIPPED REFRESH] الحساب {uid} لا يزال في الحد اليومي.")
-            else:
-                print(f"[SKIPPED REFRESH] فشل تحديث التوكن للحساب {uid}")
-
 if __name__ == '__main__':
     print("[INIT] بدء تشغيل السيرفر وتحديث التوكنات...")
     try:
         for i in range(len(group_accounts)):
             refresh_all_tokens(group=i)
-        refresh_skipped_tokens()
         print("[INIT] ✅ تم التحديث الأولي.")
     except Exception as e:
         print(f"[INIT ERROR] فشل التحديث الأولي: {e}")
