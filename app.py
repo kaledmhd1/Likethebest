@@ -13,7 +13,7 @@ app = Flask(__name__)
 
 LIKE_API_URL = "https://bngx-jwt-lik.vercel.app/send_like"
 PLAYER_INFO_URL = "https://razor-info.vercel.app/player-info"
-MAX_PARALLEL_REQUESTS = 40
+MAX_PARALLEL_REQUESTS = 100
 LIKE_TARGET_EXPIRY = 86400  # 24 ساعة
 
 # تقسيم الحسابات إلى 8 قروبات
