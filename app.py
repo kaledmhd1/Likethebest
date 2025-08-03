@@ -777,7 +777,7 @@ def FOX_RequestAddingFriend(token, target_id):
             "X-GA": "v1 1",
             "ReleaseVersion": "OB50",
         }
-        response = requests.get(LIKE_API_URL, params=params, headers=headers, timeout=30)
+        response = requests.get(LIKE_API_URL, params=params, headers=headers, timeout=60)
         try:
             return response.status_code, response.json()
         except:
@@ -868,7 +868,7 @@ def send_likes():
         if status == 200:
             success_count += 1
             successful_uids.append(uid)
-            if success_count >= 60:
+            if success_count >= 100:
                 stop_flag.set()
         else:
             failed_count += 1
