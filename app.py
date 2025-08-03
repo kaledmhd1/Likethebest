@@ -857,21 +857,26 @@ def send_likes():
     stop_flag = threading.Event()
 
     def process(uid, token):
-        nonlocal success_count, skipped_count, failed_count
-        if stop_flag.is_set():
-            return
-        status, content = FOX_RequestAddingFriend(token, target_id)
-        if isinstance(content, dict) and "BR_ACCOUNT_DAILY_LIKE_PROFILE_LIMIT" in str(content.get("response_text", "")):
-            skipped_count += 1
-            add_to_skipped(uid)
-            return
-        if status == 200:
+    nonlocal success_count, skipped_count, failed_count
+    if stop_flag.is_set():
+        return
+    status, content = FOX_RequestAddingFriend(token, target_id)
+
+    if status == 200 and isinstance(content, dict):
+        stats = content.get("stats", {})
+        if stats.get("success", 0) == 1:
             success_count += 1
             successful_uids.append(uid)
             if success_count >= 100:
                 stop_flag.set()
+        elif stats.get("daily_limited_reached", 0) == 1:
+            skipped_count += 1
+            add_to_skipped(uid)
         else:
             failed_count += 1
+    else:
+        failed_count += 1
+
 
     with ThreadPoolExecutor(max_workers=MAX_PARALLEL_REQUESTS) as executor:
         futures = [executor.submit(process, uid, token) for uid, token in tokens_to_use.items()]
