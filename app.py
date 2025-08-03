@@ -863,17 +863,19 @@ def send_likes():
         status, content = FOX_RequestAddingFriend(token, target_id)
 
         if status == 200 and isinstance(content, dict):
-    stats = content.get("stats", {})
-    if stats.get("daily_limited_reached", 0) == 1:
-        skipped_count += 1
-        add_to_skipped(uid)
-    elif stats.get("error", 1) == 0:
-        success_count += 1
-        successful_uids.append(uid)
-        if success_count >= 60:
-            stop_flag.set()
-    else:
-        failed_count += 1
+            stats = content.get("stats", {})
+            if stats.get("daily_limited_reached", 0) == 1:
+                skipped_count += 1
+                add_to_skipped(uid)
+            elif stats.get("error", 1) == 0:
+                success_count += 1
+                successful_uids.append(uid)
+                if success_count >= 60:
+                    stop_flag.set()
+            else:
+                failed_count += 1
+        else:
+            failed_count += 1
 
     with ThreadPoolExecutor(max_workers=MAX_PARALLEL_REQUESTS) as executor:
         futures = [executor.submit(process, uid, token) for uid, token in tokens_to_use.items()]
@@ -895,6 +897,7 @@ def send_likes():
     return Response(json.dumps({
         "message": message
     }, ensure_ascii=False), mimetype='application/json')
+
 
 def refresh_skipped_tokens():
     print("[SKIPPED REFRESH] بدء تحديث توكنات الحسابات المتخطاة...")
