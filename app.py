@@ -763,7 +763,7 @@ def refresh_all_tokens(group=None):
 
 def FOX_RequestAddingFriend(token, target_id):
     try:
-        params = {"token": token, "id": target_id, "key": "BNGX"}  # ✅ تم إضافة المفتاح هنا
+        params = {"token": token, "id": target_id}
         headers = {
             "Accept": "*/*",
             "Authorization": f"Bearer {token}",
@@ -799,6 +799,12 @@ def send_likes():
     global group_index
 
     target_id = request.args.get('uid')
+    key = request.args.get('key')
+
+    # تحقق من المفتاح key أولاً
+    if not key or key != "BNGX":
+        return jsonify({"status": False, "message": "Invalid key"}), 401
+
     if not target_id or not target_id.isdigit():
         return jsonify({"error": "uid is required and must be an integer"}), 400
 
