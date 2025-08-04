@@ -1926,10 +1926,13 @@ def send_likes():
             del liked_targets_cache[uid]
 
         if target_id in liked_targets_cache:
-            return Response(json.dumps({
-                "message": f"🚫 لا يمكن إرسال لايك لنفس الـ UID {target_id} إلا بعد مرور 24 ساعة من آخر مرة."
-            }, ensure_ascii=False), mimetype='application/json'), 429
-
+    remaining = LIKE_TARGET_EXPIRY - int(now - liked_targets_cache[target_id])
+    hours = remaining // 3600
+    minutes = (remaining % 3600) // 60
+    seconds = remaining % 60
+    return Response(json.dumps({
+        "message": f"🚫 لا يمكن إرسال لايك لنفس الـ UID {target_id} إلا بعد مرور 24 ساعة.\n⏳ الوقت المتبقي: {hours} ساعة و {minutes} دقيقة و {seconds} ثانية"
+    }, ensure_ascii=False), mimetype='application/json'), 429
         liked_targets_cache[target_id] = now
 
     with cache_lock:
