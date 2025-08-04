@@ -763,7 +763,7 @@ def refresh_all_tokens(group=None):
 
 def FOX_RequestAddingFriend(token, target_id):
     try:
-        params = {"token": token, "id": target_id}
+        params = {"token": token, "id": target_id, "key": "BNGX"}  # ✅ تم إضافة المفتاح هنا
         headers = {
             "Accept": "*/*",
             "Authorization": f"Bearer {token}",
