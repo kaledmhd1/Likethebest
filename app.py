@@ -1921,20 +1921,19 @@ def send_likes():
     likes_before = player_info["liked"]
 
     with liked_targets_lock:
-        to_delete = [uid for uid, ts in liked_targets_cache.items() if now - ts > LIKE_TARGET_EXPIRY]
-        for uid in to_delete:
-            del liked_targets_cache[uid]
+    to_delete = [uid for uid, ts in liked_targets_cache.items() if now - ts > LIKE_TARGET_EXPIRY]
+    for uid in to_delete:
+        del liked_targets_cache[uid]
 
-        if target_id in liked_targets_cache:
-    remaining = LIKE_TARGET_EXPIRY - int(now - liked_targets_cache[target_id])
-    hours = remaining // 3600
-    minutes = (remaining % 3600) // 60
-    seconds = remaining % 60
-    return Response(json.dumps({
-        "message": f"🚫 لا يمكن إرسال لايك لنفس الـ UID {target_id} إلا بعد مرور 24 ساعة.\n⏳ الوقت المتبقي: {hours} ساعة و {minutes} دقيقة و {seconds} ثانية"
-    }, ensure_ascii=False), mimetype='application/json'), 429
-        liked_targets_cache[target_id] = now
-
+    if target_id in liked_targets_cache:
+        remaining = LIKE_TARGET_EXPIRY - int(now - liked_targets_cache[target_id])
+        hours = remaining // 3600
+        minutes = (remaining % 3600) // 60
+        seconds = remaining % 60
+        return Response(json.dumps({
+            "message": f"🚫 لا يمكن إرسال لايك لنفس الـ UID {target_id} إلا بعد مرور 24 ساعة.\n⏳ الوقت المتبقي: {hours} ساعة و {minutes} دقيقة و {seconds} ثانية"
+        }, ensure_ascii=False), mimetype='application/json'), 429
+    liked_targets_cache[target_id] = now
     with cache_lock:
         tokens_to_use = {
             uid: token for uid, token in jwt_tokens_cache.items()
