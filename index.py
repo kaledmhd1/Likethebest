@@ -12,7 +12,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 
-LIKE_API_URL = "https://like-bjwt.onrender.com/send_like"
+LIKE_API_URL = "https://bngx-jwt-lik.vercel.app//send_like"
 PLAYER_INFO_URL = "https://razor-info.vercel.app/player-info"
 MAX_PARALLEL_REQUESTS = 40
 LIKE_TARGET_EXPIRY = 86400  # 24 ساعة
