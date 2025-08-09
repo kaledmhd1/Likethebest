@@ -1982,12 +1982,11 @@ def send_likes():
         f"✅ الاسم: {player_info['nickname']}\n"
         f"🆔 UID: {player_info['accountId']}\n"
         f"👍 قبل: {likes_before} لايك\n"
-        f"➕ المضافة: {success_count} لايك\n"
+        f"➕ المضافة: {error} لايك\n"
         f"💯 بعد: {likes_after} لايك"
     )
 
     return Response(json.dumps({
-        "message": message
-    }, ensure_ascii=False), mimetype='application/json')
-    port = int(os.environ.get("PORT", 10000))
+    "error": success_count
+}, ensure_ascii=False), mimetype='application/json')    port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
