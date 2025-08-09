@@ -1894,6 +1894,7 @@ def get_player_info(uid):
         print(f"[PLAYER INFO ERROR] UID {uid} -> {e}")
     return {"nickname": "Unknown", "liked": 0, "accountId": uid}
 
+
 @app.route('/add_likes', methods=['GET'])
 def send_likes():
     global group_index
@@ -1901,7 +1902,6 @@ def send_likes():
     target_id = request.args.get('uid')
     key = request.args.get('key')
 
-    # تحقق من المفتاح key أولاً
     if not key or key != "BNGX":
         return jsonify({"status": False, "message": "Invalid key"}), 401
 
@@ -1946,25 +1946,26 @@ def send_likes():
                 "message": "🚧 لا توجد حسابات متاحة حالياً، جرب لاحقاً."
             }, ensure_ascii=False), mimetype='application/json'), 503
 
-    success_count = 0
+    error_count = 0
     skipped_count = 0
     failed_count = 0
-    successful_uids = []
     stop_flag = threading.Event()
 
     def process(uid, token):
-        nonlocal success_count, skipped_count, failed_count
+        nonlocal error_count, skipped_count, failed_count
         if stop_flag.is_set():
             return
         status, content = FOX_RequestAddingFriend(token, target_id)
-        if isinstance(content, dict) and "BR_ACCOUNT_DAILY_LIKE_PROFILE_LIMIT" in str(content.get("response_text", "")):
-            skipped_count += 1
-            return
-        if status == 200:
-            success_count += 1
-            successful_uids.append(uid)
-            record_uid_usage(uid)
-            if success_count >= 60:
+
+        if isinstance(content, dict):
+            stats = content.get("stats", {})
+            error_count += stats.get("error", 0)
+
+            if stats.get("daily_limited_reached", 0) == 1:
+                skipped_count += 1
+                return
+
+            if error_count >= 60:
                 stop_flag.set()
         else:
             failed_count += 1
@@ -1976,19 +1977,16 @@ def send_likes():
             if stop_flag.is_set():
                 break
 
-    likes_after = likes_before + success_count
+    likes_after = likes_before + error_count
 
     message = (
         f"✅ الاسم: {player_info['nickname']}\n"
         f"🆔 UID: {player_info['accountId']}\n"
         f"👍 قبل: {likes_before} لايك\n"
-        f"➕ المضافة: {error} لايك\n"
+        f"➕ المضافة: {error_count} لايك\n"
         f"💯 بعد: {likes_after} لايك"
     )
 
     return Response(json.dumps({
-    "error": success_count
-}, ensure_ascii=False), mimetype='application/json')
-
-port = int(os.environ.get("PORT", 10000))
-app.run(host="0.0.0.0", port=port)
+        "message": message
+    }, ensure_ascii=False), mimetype='application/json')
