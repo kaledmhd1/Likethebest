@@ -1988,5 +1988,7 @@ def send_likes():
 
     return Response(json.dumps({
     "error": success_count
-}, ensure_ascii=False), mimetype='application/json')    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+}, ensure_ascii=False), mimetype='application/json')
+
+port = int(os.environ.get("PORT", 10000))
+app.run(host="0.0.0.0", port=port)
